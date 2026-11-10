@@ -29,8 +29,9 @@ changes:
 ## Installation
 
 ```sh
-# 1. Install the binary (cargo, or set GVM_RS_REPO=nicolas-moon/gvm-rs to use
-#    published release binaries), then wire up your shell:
+# 1. Install the binary (downloads the cargo-dist release binary for your
+#    platform, checksum-verified; falls back to `cargo install` if no
+#    release exists yet), then wire up your shell:
 bash <(curl -fsSL https://raw.githubusercontent.com/nicolas-moon/gvm-rs/main/binscripts/gvm-installer)
 
 # 2. Open a new shell, then:
@@ -44,6 +45,11 @@ Or manually:
 cargo install gvm-rs
 gvm-rs init          # writes the shim and adds the source line to ~/.bashrc / ~/.zshrc
 ```
+
+Release binaries are built by [cargo-dist](https://axodotdev.github.io/cargo-dist/)
+for `x86_64`/`aarch64` on Linux and macOS and published as
+`gvm-rs-<target-triple>.tar.xz` (plus `.sha256` sidecars) whenever a
+`vX.Y.Z` tag is pushed.
 
 `GVM_ROOT` (default `~/.gvm`) can be overridden to relocate everything.
 
@@ -104,3 +110,18 @@ cargo clippy --all-targets
 
 The unit tests cover version parsing/resolution, name/alias resolution,
 env-line generation and pkgset lifecycle against a temp `GVM_ROOT`.
+
+### Releasing
+
+Releases are driven by [cargo-dist](https://axodotdev.github.io/cargo-dist/)
+(config in `dist-workspace.toml`, workflow in `.github/workflows/release.yml`):
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0        # the Release workflow builds all targets and
+                              # uploads them to a GitHub Release
+```
+
+To also publish to crates.io, run `cargo dist publish` with a
+`CARGO_REGISTRY_TOKEN` (the GitHub Release is created by the tag push
+regardless).

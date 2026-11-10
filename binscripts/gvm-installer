@@ -3,82 +3,88 @@
 # to wire up the shell integration (shim + rc source line).
 #
 # Usage:
-#   curl -fsSL <repo>/binscripts/gvm-installer | bash
+#   curl -fsSL https://raw.githubusercontent.com/nicolas-moon/gvm-rs/main/binscripts/gvm-installer | bash
 #
-# If the repo has release binaries published, set:
-#   GVM_RS_REPO=nicolas-moon/gvm-rs
-# and the installer will download a release binary instead of building
-# from crates.io. Asset naming convention:
-#   gvm-rs-<os>-<arch>.tar.gz  (+ .sha256 checksum file, if published)
-# with os in {linux, darwin} and arch in {amd64, arm64, arm, 386}.
+# Release binaries are built by cargo-dist (see .github/workflows/release.yml)
+# and are named gvm-rs-<target-triple>.tar.xz — e.g.
+#   gvm-rs-x86_64-unknown-linux-gnu.tar.xz
+#   gvm-rs-aarch64-apple-darwin.tar.xz
+# — each with a .sha256 checksum sidecar. Set GVM_RS_REPO to point at a
+# different repo with such releases, or GVM_RS_REPO="" to force the
+# `cargo install gvm-rs` path (requires the crate to be on crates.io).
 set -euo pipefail
 
-GVM_RS_REPO="${GVM_RS_REPO:-}"
+GVM_RS_REPO="${GVM_RS_REPO:-nicolas-moon/gvm-rs}"
 
 err() { echo "gvm-rs installer: $*" >&2; }
 
-os_arch() {
-    local sys machine os arch
+target_triple() {
+    local sys machine
     sys=$(uname -s)
     machine=$(uname -m)
     case "$sys" in
-        Linux) os=linux ;;
-        Darwin) os=darwin ;;
-        *) err "unsupported OS: $sys (install Rust and use the cargo fallback)"; exit 1 ;;
+        Linux)
+            case "$machine" in
+                x86_64|amd64) echo "x86_64-unknown-linux-gnu" ;;
+                aarch64|arm64) echo "aarch64-unknown-linux-gnu" ;;
+                *) err "unsupported Linux architecture: $machine"; exit 1 ;;
+            esac ;;
+        Darwin)
+            case "$machine" in
+                x86_64|amd64) echo "x86_64-apple-darwin" ;;
+                aarch64|arm64) echo "aarch64-apple-darwin" ;;
+                *) err "unsupported macOS architecture: $machine"; exit 1 ;;
+            esac ;;
+        *) err "unsupported OS: $sys (gvm's shell shim is bash/zsh only)"; exit 1 ;;
     esac
-    case "$machine" in
-        x86_64|amd64) arch=amd64 ;;
-        aarch64|arm64) arch=arm64 ;;
-        i686|i386) arch=386 ;;
-        arm*) arch=arm ;;
-        *) err "unsupported architecture: $machine"; exit 1 ;;
-    esac
-    echo "$os-$arch"
 }
 
 install_from_release() {
-    local target asset_url sum_url tmp dir
-    target=$(os_arch)
-    asset_url="https://github.com/${GVM_RS_REPO}/releases/latest/download/gvm-rs-${target}.tar.gz"
+    local triple asset_url sum_url tmp
+    triple=$(target_triple)
+    asset_url="https://github.com/${GVM_RS_REPO}/releases/latest/download/gvm-rs-${triple}.tar.xz"
     sum_url="${asset_url}.sha256"
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' RETURN
     echo "Downloading release binary: ${asset_url}"
-    curl -fsSL -o "${tmp}/gvm-rs.tar.gz" "$asset_url"
-    if curl -fsSL -o "${tmp}/gvm-rs.tar.gz.sha256" "$sum_url" 2>/dev/null; then
+    curl -fsSL -o "${tmp}/gvm-rs.tar.xz" "$asset_url"
+    if curl -fsSL -o "${tmp}/gvm-rs.tar.xz.sha256" "$sum_url" 2>/dev/null; then
         echo "Verifying checksum…"
-        (cd "$tmp" && sha256sum -c gvm-rs.tar.gz.sha256)
+        (cd "$tmp" && sha256sum -c gvm-rs.tar.xz.sha256)
     else
         echo "Warning: no .sha256 asset published; skipping checksum verification."
     fi
-    tar -xzf "${tmp}/gvm-rs.tar.gz" -C "$tmp"
-    dir=$(mktemp -d "${HOME}/.gvm-rs-install.XXXXXX")
-    mv "$tmp"/gvm-rs "$dir"/gvm-rs
-    echo "$dir"
+    tar -xJf "${tmp}/gvm-rs.tar.xz" -C "$tmp"
+    if [ ! -f "$tmp/gvm-rs" ]; then
+        err "gvm-rs binary not found in the release archive"
+        exit 1
+    fi
+    echo "$tmp/gvm-rs"
 }
 
 install_from_cargo() {
     if ! command -v cargo >/dev/null 2>&1; then
-        err "cargo not found. Install Rust from https://rustup.rs, or set GVM_RS_REPO=nicolas-moon/gvm-rs to use release binaries."
+        err "cargo not found. Install Rust from https://rustup.rs, or make sure a release exists for ${GVM_RS_REPO}."
         exit 1
     fi
-    echo "Installing gvm-rs via cargo (this compiles on first run and can take a few minutes)…"
+    echo "Installing gvm-rs via cargo (this compiles and can take a few minutes)…"
     cargo install gvm-rs
 }
 
 # 1. Install the binary (already installed? then skip).
 if command -v gvm-rs >/dev/null 2>&1; then
     echo "gvm-rs already installed: $(gvm-rs --version)"
-elif [ -n "$GVM_RS_REPO" ]; then
-    bin_dir=$(install_from_release)
+elif [ -n "$GVM_RS_REPO" ] && bin_path=$(install_from_release 2>/dev/null); then
     # Prefer $GVM_ROOT/bin so the shim finds it without PATH changes.
     target_dir="${GVM_ROOT:-$HOME/.gvm}/bin"
     mkdir -p "$target_dir"
-    mv "$bin_dir"/gvm-rs "$target_dir"/gvm-rs
-    rmdir "$bin_dir"
+    mv "$bin_path" "$target_dir"/gvm-rs
     chmod +x "$target_dir/gvm-rs"
     echo "Installed to $target_dir/gvm-rs"
     gvm-rs() { "$target_dir/gvm-rs" "$@"; }
+elif [ -n "$GVM_RS_REPO" ]; then
+    echo "No release binary available for this platform yet; falling back to cargo install."
+    install_from_cargo
 else
     install_from_cargo
 fi
