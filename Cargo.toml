@@ -1,0 +1,33 @@
+[package]
+name = "gvm-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Go Version Manager — a Rust reimplementation of moovweb/gvm"
+license = "MIT"
+repository = "https://github.com/yourorg/gvm-rs"
+keywords = ["go", "golang", "toolchain", "version-manager"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+
+[[bin]]
+name = "gvm-rs"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env"] }
+flate2 = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tar = "0.4"
+thiserror = "2.0"
+walkdir = "2.5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+strip = true

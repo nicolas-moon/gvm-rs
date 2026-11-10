@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build
+        run: cargo build --all-targets
+      - name: test
+        run: cargo test
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build binary
+        run: cargo build --release
+      - name: smoke test against a temp GVM_ROOT
+        env:
+          GVM_ROOT: /tmp/gvm-rs-smoke
+        run: |
+          set -e
+          BIN=target/release/gvm-rs
+          "$BIN" --help
+          "$BIN" init --rc /tmp/gvm-rs-smoke.rc
+          test -f "$GVM_ROOT/scripts/gvm"
+          grep -q "gvm-rs" /tmp/gvm-rs-smoke.rc
+          # listall hits the network; skip the rest (install/use need network+build)
