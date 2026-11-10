@@ -11,4 +11,13 @@ ci = "github"
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax).
 # No Windows: the gvm shell shim is bash/zsh only.
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+# musl builds are statically linked and run on any Linux (including
+# NixOS and Alpine); the gnu builds are the conventional alternative.
+targets = [
+  "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-unknown-linux-musl",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+]

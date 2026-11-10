@@ -18,15 +18,20 @@ GVM_RS_REPO="${GVM_RS_REPO:-nicolas-moon/gvm-rs}"
 
 err() { echo "gvm-rs installer: $*" >&2; }
 
-target_triple() {
+target_triples() {
+    # Candidate target triples in preference order: on Linux the static
+    # musl build comes first because it runs anywhere (glibc distros,
+    # NixOS, Alpine); the gnu build is the fallback.
     local sys machine
     sys=$(uname -s)
     machine=$(uname -m)
     case "$sys" in
         Linux)
             case "$machine" in
-                x86_64|amd64) echo "x86_64-unknown-linux-gnu" ;;
-                aarch64|arm64) echo "aarch64-unknown-linux-gnu" ;;
+                x86_64|amd64) echo "x86_64-unknown-linux-musl
+x86_64-unknown-linux-gnu" ;;
+                aarch64|arm64) echo "aarch64-unknown-linux-musl
+aarch64-unknown-linux-gnu" ;;
                 *) err "unsupported Linux architecture: $machine"; exit 1 ;;
             esac ;;
         Darwin)
@@ -41,27 +46,33 @@ target_triple() {
 
 install_from_release() {
     local triple asset_url sum_url tmp
-    triple=$(target_triple)
-    asset_url="https://github.com/${GVM_RS_REPO}/releases/latest/download/gvm-rs-${triple}.tar.xz"
-    sum_url="${asset_url}.sha256"
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' RETURN
-    echo "Downloading release binary: ${asset_url}"
-    curl -fsSL -o "${tmp}/gvm-rs.tar.xz" "$asset_url"
-    if curl -fsSL -o "${tmp}/gvm-rs.tar.xz.sha256" "$sum_url" 2>/dev/null; then
-        echo "Verifying checksum…"
-        (cd "$tmp" && sha256sum -c gvm-rs.tar.xz.sha256)
-    else
-        echo "Warning: no .sha256 asset published; skipping checksum verification."
-    fi
-    # cargo-dist wraps the archive contents in a top-level directory
-    # named after the asset; strip it so the binary lands in $tmp.
-    tar -xJf "${tmp}/gvm-rs.tar.xz" -C "$tmp" --strip-components=1
-    if [ ! -f "$tmp/gvm-rs" ]; then
-        err "gvm-rs binary not found in the release archive"
+    local found=""
+    while IFS= read -r triple; do
+        asset_url="https://github.com/${GVM_RS_REPO}/releases/latest/download/gvm-rs-${triple}.tar.xz"
+        sum_url="${asset_url}.sha256"
+        echo "Downloading release binary: ${asset_url}"
+        curl -fsSL -o "${tmp}/gvm-rs.tar.xz" "$asset_url" || continue
+        if curl -fsSL -o "${tmp}/gvm-rs.tar.xz.sha256" "$sum_url" 2>/dev/null; then
+            echo "Verifying checksum…"
+            (cd "$tmp" && sha256sum -c gvm-rs.tar.xz.sha256) || { echo "Checksum mismatch for ${asset_url}"; continue; }
+        else
+            echo "Warning: no .sha256 asset published; skipping checksum verification."
+        fi
+        # cargo-dist wraps the archive contents in a top-level directory
+        # named after the asset; strip it so the binary lands in $tmp.
+        tar -xJf "${tmp}/gvm-rs.tar.xz" -C "$tmp" --strip-components=1
+        if [ -f "$tmp/gvm-rs" ]; then
+            found="$tmp/gvm-rs"
+            break
+        fi
+    done < <(target_triples)
+    if [ -z "$found" ]; then
+        err "no usable release binary found for this platform in ${GVM_RS_REPO}"
         exit 1
     fi
-    echo "$tmp/gvm-rs"
+    echo "$found"
 }
 
 install_from_cargo() {
