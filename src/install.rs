@@ -163,7 +163,18 @@ fn install_release_from_source(
     source_url: Option<&str>,
 ) -> anyhow::Result<()> {
     let tag = version.tag();
-    let filename = format!("{tag}.tar.gz");
+    // Source tarball naming has changed over the years (`go1.21.13.tar.gz`
+    // vs `go1.23.12.src.tar.gz`), so ask go.dev metadata for the exact
+    // filename; fall back to the legacy name when offline.
+    let filename = releases::fetch(true)
+        .ok()
+        .and_then(|rels| {
+            rels.into_iter()
+                .find(|r| r.version == tag)
+                .and_then(|r| r.files.into_iter().find(|f| f.kind == "source"))
+                .map(|f| f.filename)
+        })
+        .unwrap_or_else(|| format!("{tag}.tar.gz"));
     let tarball = root.cache().join(&filename);
     let url = source_url
         .map(|s| s.to_string())
@@ -209,13 +220,22 @@ fn install_tip(root: &Root, source_url: Option<&str>) -> anyhow::Result<()> {
 
 fn run_build(root: &Root, version: &GoVersion, build_dir: &Path) -> anyhow::Result<()> {
     let tag = version.tag();
-    let make = build_dir.join("make.bash");
-    if !make.is_file() {
+    // Older releases carry `make.bash` at the tree root; newer source trees
+    // moved it under `src/` (with `go.env` at the GOROOT root).
+    let (make, work_dir) = if build_dir.join("make.bash").is_file() {
+        (build_dir.join("make.bash"), build_dir.to_path_buf())
+    } else if build_dir.join("src").join("make.bash").is_file() {
+        (
+            build_dir.join("src").join("make.bash"),
+            build_dir.join("src"),
+        )
+    } else {
         anyhow::bail!(
-            "{} not found — is this a valid Go source tree?",
-            make.display()
+            "make.bash not found in {} or {} — is this a valid Go source tree?",
+            build_dir.join("make.bash").display(),
+            build_dir.join("src").join("make.bash").display()
         );
-    }
+    };
     let bootstrap = util::find_bootstrap(root, version)?;
     eprintln!(
         "Building Go {tag} (bootstrap: {}) — this can take several minutes…",
@@ -227,7 +247,7 @@ fn run_build(root: &Root, version: &GoVersion, build_dir: &Path) -> anyhow::Resu
     let new_path = util::prepend_path(bindir)?;
     let status = Command::new("bash")
         .arg(&make)
-        .current_dir(build_dir)
+        .current_dir(&work_dir)
         .env("GOROOT", build_dir)
         .env("PATH", new_path)
         .status()?;
