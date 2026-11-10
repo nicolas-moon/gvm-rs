@@ -45,24 +45,26 @@ aarch64-unknown-linux-gnu" ;;
 }
 
 install_from_release() {
-    local triple asset_url sum_url tmp
+    local triple asset_url sum_url tmp base
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' RETURN
     local found=""
     while IFS= read -r triple; do
         asset_url="https://github.com/${GVM_RS_REPO}/releases/latest/download/gvm-rs-${triple}.tar.xz"
         sum_url="${asset_url}.sha256"
-        echo "Downloading release binary: ${asset_url}"
-        curl -fsSL -o "${tmp}/gvm-rs.tar.xz" "$asset_url" || continue
-        if curl -fsSL -o "${tmp}/gvm-rs.tar.xz.sha256" "$sum_url" 2>/dev/null; then
-            echo "Verifying checksum…"
-            (cd "$tmp" && sha256sum -c gvm-rs.tar.xz.sha256) || { echo "Checksum mismatch for ${asset_url}"; continue; }
+        # Keep the asset's original name: the .sha256 sidecar references it.
+        base=$(basename "$asset_url")
+        echo "Downloading release binary: ${asset_url}" >&2
+        curl -fsSL -o "${tmp}/${base}" "$asset_url" || continue
+        if curl -fsSL -o "${tmp}/${base}.sha256" "$sum_url" 2>/dev/null; then
+            echo "Verifying checksum…" >&2
+            (cd "$tmp" && sha256sum -c "${base}.sha256") >&2 || { echo "Checksum mismatch for ${asset_url}" >&2; continue; }
         else
-            echo "Warning: no .sha256 asset published; skipping checksum verification."
+            echo "Warning: no .sha256 asset published; skipping checksum verification." >&2
         fi
         # cargo-dist wraps the archive contents in a top-level directory
         # named after the asset; strip it so the binary lands in $tmp.
-        tar -xJf "${tmp}/gvm-rs.tar.xz" -C "$tmp" --strip-components=1
+        tar -xJf "${tmp}/${base}" -C "$tmp" --strip-components=1
         if [ -f "$tmp/gvm-rs" ]; then
             found="$tmp/gvm-rs"
             break
@@ -72,7 +74,12 @@ install_from_release() {
         err "no usable release binary found for this platform in ${GVM_RS_REPO}"
         exit 1
     fi
-    echo "$found"
+    # Hand the binary out of $tmp: the RETURN trap deletes $tmp when this
+    # function returns, and the caller takes ownership (and the empty dir)
+    # from here.
+    out_dir=$(mktemp -d)
+    mv "$found" "${out_dir}/gvm-rs"
+    echo "${out_dir}/gvm-rs"
 }
 
 install_from_cargo() {
@@ -87,11 +94,12 @@ install_from_cargo() {
 # 1. Install the binary (already installed? then skip).
 if command -v gvm-rs >/dev/null 2>&1; then
     echo "gvm-rs already installed: $(gvm-rs --version)"
-elif [ -n "$GVM_RS_REPO" ] && bin_path=$(install_from_release 2>/dev/null); then
+elif [ -n "$GVM_RS_REPO" ] && bin_path=$(install_from_release); then
     # Prefer $GVM_ROOT/bin so the shim finds it without PATH changes.
     target_dir="${GVM_ROOT:-$HOME/.gvm}/bin"
     mkdir -p "$target_dir"
     mv "$bin_path" "$target_dir"/gvm-rs
+    rmdir "$(dirname "$bin_path")"
     chmod +x "$target_dir/gvm-rs"
     echo "Installed to $target_dir/gvm-rs"
     gvm-rs() { "$target_dir/gvm-rs" "$@"; }
