@@ -6,7 +6,7 @@
 #   curl -fsSL <repo>/binscripts/gvm-installer | bash
 #
 # If the repo has release binaries published, set:
-#   GVM_RS_REPO=yourorg/gvm-rs
+#   GVM_RS_REPO=nicolas-moon/gvm-rs
 # and the installer will download a release binary instead of building
 # from crates.io. Asset naming convention:
 #   gvm-rs-<os>-<arch>.tar.gz  (+ .sha256 checksum file, if published)
@@ -59,7 +59,7 @@ install_from_release() {
 
 install_from_cargo() {
     if ! command -v cargo >/dev/null 2>&1; then
-        err "cargo not found. Install Rust from https://rustup.rs, or set GVM_RS_REPO=yourorg/gvm-rs to use release binaries."
+        err "cargo not found. Install Rust from https://rustup.rs, or set GVM_RS_REPO=nicolas-moon/gvm-rs to use release binaries."
         exit 1
     fi
     echo "Installing gvm-rs via cargo (this compiles on first run and can take a few minutes)…"

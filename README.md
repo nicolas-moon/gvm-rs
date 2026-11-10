@@ -29,9 +29,9 @@ changes:
 ## Installation
 
 ```sh
-# 1. Install the binary (cargo, or set GVM_RS_REPO=yourorg/gvm-rs to use
+# 1. Install the binary (cargo, or set GVM_RS_REPO=nicolas-moon/gvm-rs to use
 #    published release binaries), then wire up your shell:
-bash <(curl -fsSL https://raw.githubusercontent.com/yourorg/gvm-rs/main/binscripts/gvm-installer)
+bash <(curl -fsSL https://raw.githubusercontent.com/nicolas-moon/gvm-rs/main/binscripts/gvm-installer)
 
 # 2. Open a new shell, then:
 gvm install go1.21 --binary   # prebuilt tarball, checksum-verified
