@@ -54,7 +54,9 @@ install_from_release() {
     else
         echo "Warning: no .sha256 asset published; skipping checksum verification."
     fi
-    tar -xJf "${tmp}/gvm-rs.tar.xz" -C "$tmp"
+    # cargo-dist wraps the archive contents in a top-level directory
+    # named after the asset; strip it so the binary lands in $tmp.
+    tar -xJf "${tmp}/gvm-rs.tar.xz" -C "$tmp" --strip-components=1
     if [ ! -f "$tmp/gvm-rs" ]; then
         err "gvm-rs binary not found in the release archive"
         exit 1
