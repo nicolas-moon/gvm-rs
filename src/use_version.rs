@@ -44,7 +44,7 @@ pub fn use_version(root: &Root, name: Option<&str>, set_default: bool) -> anyhow
          export GOROOT='{}'\n\
          export GOPATH='{}'\n\
          export GVM_OVERLAY_PREFIX='{}'\n\
-         export PATH='{}:${{PATH}}'\n",
+         export PATH='{}':\"${{PATH}}\"\n",
         util::shell_single_quote(gos_dir.to_str().unwrap_or_default()),
         util::shell_single_quote(gopath.to_str().unwrap_or_default()),
         util::shell_single_quote(overlay.to_str().unwrap_or_default()),
@@ -77,7 +77,10 @@ mod tests {
             "export GOPATH='{}'",
             root.packages().join(v.tag()).join("default").display()
         )));
-        assert!(out.contains("export PATH='"));
+        assert!(out.contains(&format!(
+            "export PATH='{}':\"${{PATH}}\"",
+            root.gos().join(v.tag()).join("bin").display()
+        )));
     }
 
     #[test]
